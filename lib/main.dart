@@ -16,12 +16,14 @@ Future<void> main() async {
 class NexioApp extends StatefulWidget {
   const NexioApp({super.key, required this.backendConfigured});
   final bool backendConfigured;
+
   @override
   State<NexioApp> createState() => _NexioAppState();
 }
 
 class _NexioAppState extends State<NexioApp> {
   ThemeMode mode = ThemeMode.system;
+
   @override
   Widget build(BuildContext context) {
     const blue = Color(0xFF3390EC);
@@ -35,26 +37,27 @@ class _NexioAppState extends State<NexioApp> {
       ),
       home: widget.backendConfigured
           ? AuthGate(onThemeChanged: (v) => setState(() => mode = v))
-          : const SetupRequired(),
+          : SetupRequired(onThemeChanged: (v) => setState(() => mode = v)),
     );
   }
 }
 
 class SetupRequired extends StatelessWidget {
-  const SetupRequired({super.key});
+  const SetupRequired({super.key, required this.onThemeChanged});
+  final ValueChanged<ThemeMode> onThemeChanged;
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Nexio')),
-    body: const Center(child: Padding(
-      padding: EdgeInsets.all(24),
+    body: Center(child: Padding(
+      padding: const EdgeInsets.all(24),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.sms_outlined, size: 54, color: Color(0xFF3390EC)),
-        SizedBox(height: 16),
-        Text('Подключите сервер для SMS-входа', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-        SizedBox(height: 10),
-        Text('Чтобы SMS действительно приходили на SIM-карту, создайте проект Supabase, включите Phone Auth и настройте SMS-провайдера. Без этого отправка кодов не работает.', textAlign: TextAlign.center),
-        SizedBox(height: 18),
-        Text('Затем добавьте SUPABASE_URL и SUPABASE_ANON_KEY в GitHub Actions Secrets и запустите сборку APK.', textAlign: TextAlign.center),
+        const Icon(Icons.sms_outlined, size: 54, color: Color(0xFF3390EC)),
+        const SizedBox(height: 16),
+        const Text('Подключите сервер для SMS-входа', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+        const SizedBox(height: 10),
+        const Text('Приложение уже содержит экран входа по номеру и код подтверждения. Чтобы SMS действительно приходили на SIM-карту, нужно создать проект Supabase и подключить SMS-провайдера. Без этого отправка кодов не работает.', textAlign: TextAlign.center),
+        const SizedBox(height: 18),
+        const Text('После настройки соберите APK с параметрами SUPABASE_URL и SUPABASE_ANON_KEY.', textAlign: TextAlign.center),
       ]),
     )),
   );
@@ -67,16 +70,14 @@ class AuthGate extends StatelessWidget {
   Widget build(BuildContext context) => StreamBuilder<AuthState>(
     stream: Supabase.instance.client.auth.onAuthStateChange,
     builder: (context, snapshot) {
-      if (Supabase.instance.client.auth.currentSession != null) {
-        return HomeScreen(onThemeChanged: onThemeChanged);
-      }
-      return const PhoneAuthScreen();
+      final session = Supabase.instance.client.auth.currentSession;
+      if (session != null) return HomeScreen(onThemeChanged: onThemeChanged);
+      return PhoneAuthScreen();
     },
   );
 }
 
 class PhoneAuthScreen extends StatefulWidget {
-  const PhoneAuthScreen({super.key});
   @override
   State<PhoneAuthScreen> createState() => _PhoneAuthScreenState();
 }
@@ -90,17 +91,17 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   Future<void> sendCode() async {
     final number = phone.text.trim();
     if (!number.startsWith('+') || number.length < 8) {
-      setState(() => error = 'Введите номер в международном формате, например +380…');
+      setState(() => error = 'Введите номер в международном формате, например +33… или +7…');
       return;
     }
     setState(() { busy = true; error = null; });
     try {
       await Supabase.instance.client.auth.signInWithOtp(phone: number);
-      if (mounted) setState(() => sent = true);
+      setState(() => sent = true);
     } on AuthException catch (e) {
-      if (mounted) setState(() => error = e.message);
+      setState(() => error = e.message);
     } catch (_) {
-      if (mounted) setState(() => error = 'Не удалось отправить SMS. Проверьте настройки SMS-провайдера.');
+      setState(() => error = 'Не удалось отправить SMS. Проверьте настройки SMS-провайдера.');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -110,12 +111,14 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
     setState(() { busy = true; error = null; });
     try {
       await Supabase.instance.client.auth.verifyOTP(
-        phone: phone.text.trim(), token: code.text.trim(), type: OtpType.sms,
+        phone: phone.text.trim(),
+        token: code.text.trim(),
+        type: OtpType.sms,
       );
     } on AuthException catch (e) {
-      if (mounted) setState(() => error = e.message);
+      setState(() => error = e.message);
     } catch (_) {
-      if (mounted) setState(() => error = 'Не удалось проверить код. Попробуйте ещё раз.');
+      setState(() => error = 'Не удалось проверить код. Попробуйте ещё раз.');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -138,7 +141,7 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
           Text(sent ? 'Введите код из SMS' : 'Вход или регистрация', textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 24),
           if (!sent) ...[
-            TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Номер телефона', hintText: '+380 00 000 00 00', prefixIcon: Icon(Icons.phone), border: OutlineInputBorder())),
+            TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Номер телефона', hintText: '+33 6 12 34 56 78', prefixIcon: Icon(Icons.phone), border: OutlineInputBorder())),
             const SizedBox(height: 14),
             FilledButton(onPressed: busy ? null : sendCode, child: Text(busy ? 'Отправка…' : 'Получить код')),
           ] else ...[
@@ -171,7 +174,6 @@ class _HomeScreenState extends State<HomeScreen> {
     {'name': 'Друзья', 'message': 'Отправили стикер', 'emoji': '😎'},
     {'name': 'Объявления', 'message': 'Новости проекта', 'emoji': '📢'},
   ];
-
   @override
   Widget build(BuildContext context) {
     final titles = ['Чаты', 'Контакты', 'Каналы', 'Звонки', 'Настройки'];
@@ -234,13 +236,11 @@ class _ChatScreenState extends State<ChatScreen> {
   final input = TextEditingController();
   final messages = <String>['Привет! Это Nexio 👋', 'Здесь появятся ваши сообщения после подключения сервера.'];
   final stickers = const ['🚀','💙','😂','🔥','👀','🥳','❤️','👍','🤝','✨','😎','🎉','🐱','🌈','💬','⭐'];
-
   void send(String value) {
     if (value.trim().isEmpty) return;
     setState(() => messages.add(value.trim()));
     input.clear();
   }
-
   void openStickers() {
     showModalBottomSheet(context: context, showDragHandle: true, builder: (ctx) => Padding(
       padding: const EdgeInsets.all(16),
@@ -253,10 +253,8 @@ class _ChatScreenState extends State<ChatScreen> {
       ]),
     ));
   }
-
   @override
   void dispose() { input.dispose(); super.dispose(); }
-
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text(widget.name)),
